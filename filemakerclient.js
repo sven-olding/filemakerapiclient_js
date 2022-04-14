@@ -25,11 +25,16 @@ class FileMakerClient {
                     'Basic: ' + btoa(this.username + ':' + this.password),
             }),
         });
+
+        const respJson = await resp.json();
         if (!resp.ok) {
-            const respText = await resp.text();
-            throw new LoginException(JSON.stringify(respText));
+            this.sessionToken = '';
+            this.isLoggedIn = false;
+            throw new FileMakerClientException(
+                respJson.messages[0].message,
+                resp.status
+            );
         } else {
-            const respJson = await resp.json();
             this.sessionToken = respJson.response.token;
             this.isLoggedIn = this.sessionToken && this.sessionToken != '';
             return this.sessionToken;
@@ -74,27 +79,59 @@ class FileMakerClient {
                 Authorization: 'Bearer ' + this.sessionToken,
             }),
         });
+
+        const respJson = await resp.json();
         if (!resp.ok) {
-            const respText = await resp.text();
-            throw new FileMakerClientException(JSON.stringify(respText));
+            throw new FileMakerClientException(
+                respJson.messages[0].message,
+                resp.status
+            );
         } else {
-            const respJson = await resp.json();
+            return respJson.response.data;
+        }
+    }
+
+    async findRecords(layoutName, query) {
+        if (!this.isLoggedIn) {
+            throw new FileMakerClientException("You'll need to login first");
+        }
+        let url =
+            this.host +
+            '/fmi/data/vLatest/databases/' +
+            this.database +
+            '/layouts/' +
+            layoutName +
+            '/_find';
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: new Headers({
+                Authorization: 'Bearer ' + this.sessionToken,
+                'Content-Type': 'application/json',
+            }),
+            body: JSON.stringify(query),
+        });
+        const respJson = await resp.json();
+        if (!resp.ok) {
+            throw new FileMakerClientException(
+                respJson.messages[0].message,
+                resp.status
+            );
+        } else {
             return respJson.response.data;
         }
     }
 }
 
-class LoginException {
-    constructor(message) {
-        this.message = message;
-    }
-}
-
 class FileMakerClientException {
-    constructor(message) {
-        this.message = message;
+    constructor(message, statusCode) {
+        if (statusCode && statusCode != '') {
+            this.message = 'HTTP ' + statusCode + ': ';
+        } else {
+            this.message = '';
+        }
+        this.message += message;
     }
 }
 
-export { LoginException, FileMakerClientException };
+export { FileMakerClientException };
 export { FileMakerClient };
